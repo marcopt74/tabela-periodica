@@ -1,4 +1,4 @@
-const CACHE = 'elementar-v1'
+const CACHE = 'elementar-v1.1'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting())

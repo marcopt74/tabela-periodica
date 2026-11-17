@@ -7,10 +7,12 @@ import { PeriodicTable, type TileLook } from './components/PeriodicTable.tsx'
 import { Quiz } from './components/Quiz.tsx'
 import { CATEGORY_MAP, CATEGORY_ORDER, PHASE_COLORS } from './data/categories.ts'
 import { elements, getElement } from './data/elements.ts'
-import type { CategoryId } from './data/types.ts'
-import { matchesQuery } from './lib/format.ts'
+import type { CategoryId, Element, Phase } from './data/types.ts'
+import { IconSearch } from './components/Icons.tsx'
+import { formatMass, matchesQuery } from './lib/format.ts'
 import {
   ROOM_C,
+  roomStateShort,
   TEMP_PRESETS,
   celsiusToSlider,
   phaseLabel,
@@ -24,12 +26,44 @@ import type { RoundResult } from './lib/quiz.ts'
 
 type View = 'table' | 'quiz' | 'badges'
 
+function Peek({ element, phase, celsius }: { element: Element | null; phase: Phase | null; celsius: number }) {
+  if (!element) {
+    return (
+      <div className="peek empty-state" aria-live="polite">
+        <div className="peek-tile" aria-hidden="true">
+          ?
+        </div>
+        <div>
+          <strong>Toca num quadradinho.</strong>
+          <p>Há 118 elementos à tua espera.</p>
+        </div>
+      </div>
+    )
+  }
+  const category = CATEGORY_MAP[element.category]
+  const swatch = phase ? PHASE_COLORS[phase] : category.color
+  return (
+    <div className="peek" aria-live="polite">
+      <div className="peek-tile" aria-hidden="true" style={{ '--swatch': swatch } as CSSProperties}>
+        {element.symbol}
+      </div>
+      <div>
+        <h3>{element.name}</h3>
+        <p className="meta">
+          n.º {element.z} · {formatMass(element)} u · {roomStateShort(element)} a 20 °C
+        </p>
+        <span className="tag">{phase ? `${phaseLabel(phase)} a ${formatTemp(celsius)}` : category.label}</span>
+      </div>
+    </div>
+  )
+}
+
 function Logo() {
   return (
     <div className="logo" aria-hidden="true">
-      <span className="logo-nucleus" />
-      <span className="logo-orbit" />
-      <span className="logo-orbit logo-orbit-b" />
+      <i />
+      <span />
+      <span />
     </div>
   )
 }
@@ -51,6 +85,7 @@ function Explorer() {
   const [tempMode, setTempMode] = useState(false)
   const [slider, setSlider] = useState(() => celsiusToSlider(ROOM_C))
   const [hoverCategory, setHoverCategory] = useState<CategoryId | null>(null)
+  const [peekZ, setPeekZ] = useState<number | null>(null)
   const [lockedCategory, setLockedCategory] = useState<CategoryId | null>(null)
   const [openZ, setOpenZ] = useState<number | null>(null)
   const [freshZ, setFreshZ] = useState<number | null>(null)
@@ -87,6 +122,7 @@ function Explorer() {
     return tally
   }, [tempMode, celsius])
 
+  const seen = useMemo(() => new Set(save.discovered), [save.discovered])
   const visible = elements.filter((element) => matchesQuery(element, query)).length
 
   function discover(z: number) {
@@ -142,41 +178,32 @@ function Explorer() {
       <a className="skip" href="#conteudo">
         Saltar para o conteúdo
       </a>
-      <div className="blobs" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
       <div className="page">
         <header className="top">
           <div className="brand">
             <Logo />
             <div>
-              <p className="kicker">Laboratório para curiosos</p>
               <h1>Elementar</h1>
+              <p className="sub">Laboratório para curiosos</p>
             </div>
           </div>
-          <p className="lede">Toca num quadradinho. Há 118 elementos à tua espera.</p>
-          <div className="top-actions">
-            <p className="progress-pill">
-              <span>
-                {save.discovered.length} de 118 descobertos
-              </span>
-              <span className="progress-track" aria-hidden="true">
-                <span style={{ width: `${(save.discovered.length / 118) * 100}%` }} />
-              </span>
-            </p>
-            <nav aria-label="Secções">
-              <button type="button" aria-current={view === 'table' ? 'page' : undefined} onClick={() => setView('table')}>
-                Tabela
-              </button>
-              <button type="button" aria-current={view === 'quiz' ? 'page' : undefined} onClick={() => setView('quiz')}>
-                Desafio
-              </button>
-              <button type="button" aria-current={view === 'badges' ? 'page' : undefined} onClick={() => setView('badges')}>
-                Medalhas
-              </button>
-            </nav>
+          <nav className="tabs" aria-label="Secções">
+            <button type="button" aria-current={view === 'table' ? 'page' : undefined} onClick={() => setView('table')}>
+              Tabela
+            </button>
+            <button type="button" aria-current={view === 'quiz' ? 'page' : undefined} onClick={() => setView('quiz')}>
+              Desafio
+            </button>
+            <button type="button" aria-current={view === 'badges' ? 'page' : undefined} onClick={() => setView('badges')}>
+              Medalhas
+            </button>
+          </nav>
+          <div className="progress" role="group" aria-label="O teu progresso">
+            <div className="ring" aria-hidden="true" style={{ '--p': (save.discovered.length / 118) * 100 } as CSSProperties} />
+            <div>
+              <strong>{save.discovered.length} de 118</strong>
+              <span>descobertos</span>
+            </div>
           </div>
         </header>
         <main id="conteudo">
@@ -185,18 +212,22 @@ function Explorer() {
               <h2 id="titulo-tabela" className="sr-only">
                 Tabela periódica
               </h2>
-              <div className="toolbar">
-                <label className="search">
+              <form className="toolbar" role="search" onSubmit={(event) => event.preventDefault()}>
+                <label className="field grow">
                   <span>Procurar elemento</span>
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Nome, símbolo ou número"
-                    autoComplete="off"
-                    enterKeyHint="search"
-                  />
+                  <span className="search-wrap">
+                    <IconSearch />
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Nome, símbolo ou número"
+                      autoComplete="off"
+                      enterKeyHint="search"
+                    />
+                  </span>
                 </label>
-                <label>
+                <label className="field">
                   <span>Período</span>
                   <select
                     value={period ?? ''}
@@ -210,7 +241,7 @@ function Explorer() {
                     ))}
                   </select>
                 </label>
-                <label>
+                <label className="field">
                   <span>Grupo</span>
                   <select
                     value={group ?? ''}
@@ -226,12 +257,13 @@ function Explorer() {
                 </label>
                 <label className="switch">
                   <input type="checkbox" checked={tempMode} onChange={(event) => setTempMode(event.target.checked)} />
+                  <span className="track" aria-hidden="true" />
                   <span>Ver o estado da matéria</span>
                 </label>
                 {filtersOn ? (
                   <button
                     type="button"
-                    className="ghost"
+                    className="btn ghost small"
                     onClick={() => {
                       setQuery('')
                       setGroup(null)
@@ -242,7 +274,7 @@ function Explorer() {
                     Limpar filtros
                   </button>
                 ) : null}
-              </div>
+              </form>
               {tempMode ? (
                 <div className="temp-panel">
                   <div className="temp-readout">
@@ -268,8 +300,19 @@ function Explorer() {
                       </button>
                     ))}
                   </div>
-                  <p className="temp-counts">
-                    {counts.solid} sólidos · {counts.liquid} líquidos · {counts.gas} gases · {counts.unknown} sem dados
+                  <p className="temp-counts" aria-live="polite">
+                    <span>
+                      <b>{counts.solid}</b> sólidos
+                    </span>
+                    <span>
+                      <b>{counts.liquid}</b> líquidos
+                    </span>
+                    <span>
+                      <b>{counts.gas}</b> gases
+                    </span>
+                    <span>
+                      <b>{counts.unknown}</b> sem dados
+                    </span>
                   </p>
                 </div>
               ) : null}
@@ -319,7 +362,16 @@ function Explorer() {
                     tileStyle={tileStyle}
                     onOpen={openCard}
                     onHoverCategory={setHoverCategory}
+                    onPeek={(element) => setPeekZ(element.z)}
                     highlightCategory={highlight}
+                    seen={seen}
+                    peek={
+                      <Peek
+                        element={peekZ == null ? null : getElement(peekZ)}
+                        phase={peekZ != null && tempMode ? stateAt(getElement(peekZ), celsius) : null}
+                        celsius={celsius}
+                      />
+                    }
                   />
                 </div>
                 {visible === 0 ? (
@@ -344,7 +396,7 @@ function Explorer() {
             </div>
           ) : null}
         </main>
-        <footer>
+        <footer className="foot">
           <p>
             Massas arredondadas a 3 casas. Temperaturas aproximadas, à pressão normal. O estado «da sala» usa 20 °C.
             Alguns elementos são tóxicos ou radioativos: isto é para aprender, não para experiências sem um adulto.
@@ -356,6 +408,7 @@ function Explorer() {
           element={openElement}
           isNew={freshZ === openElement.z}
           onClose={closeCard}
+          onNavigate={openCard}
           onShowFamily={view === 'table' ? showFamily : undefined}
         />
       ) : null}

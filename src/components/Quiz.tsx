@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { CATEGORY_MAP } from '../data/categories.ts'
 import type { Element, QuizMode } from '../data/types.ts'
 import {
@@ -12,7 +12,7 @@ import {
   type Question,
   type RoundResult,
 } from '../lib/quiz.ts'
-import { IconStar } from './Icons.tsx'
+import { IconArrow, IconStar } from './Icons.tsx'
 import { PeriodicTable, type TileLook } from './PeriodicTable.tsx'
 
 type Phase = 'pick' | 'play' | 'results'
@@ -45,6 +45,16 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
   const [live, setLive] = useState('')
   const rng = useRef(mulberry32(1))
   const finished = useRef(false)
+  const nextButton = useRef<HTMLButtonElement>(null)
+  const answerRef = useRef<(chosen: Element | null, right: boolean) => void>(() => {})
+  const resultsTitle = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    if (picked != null) nextButton.current?.focus()
+  }, [picked])
+  useEffect(() => {
+    if (phase === 'results') resultsTitle.current?.focus()
+  }, [phase])
 
   function start(nextMode: QuizMode) {
     rng.current = mulberry32((Date.now() ^ Math.floor(Math.random() * 100000)) >>> 0)
@@ -64,6 +74,17 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
     setPhase('play')
   }
 
+  useEffect(() => {
+    if (phase !== 'play' || mode === 'find' || picked != null || !question) return
+    function onKey(event: KeyboardEvent) {
+      if (document.querySelector('.backdrop')) return
+      const option = question?.options[Number(event.key) - 1]
+      if (option && question) answerRef.current(option, option.z === question.answer.z)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [phase, mode, picked, question])
+
   function answerWith(chosen: Element | null, right: boolean) {
     if (!question || picked != null) return
     const gained = right ? scoreCorrect(streak) : { points: 0, streak: 0 }
@@ -82,6 +103,10 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
       : `Ainda não. ${question.answer.name} é ${question.answer.symbol}.`
     setLive(prompt)
   }
+
+  useEffect(() => {
+    answerRef.current = answerWith
+  })
 
   function next() {
     if (!question) return
@@ -117,13 +142,17 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
   if (phase === 'pick') {
     return (
       <section className="quiz" aria-labelledby="titulo-desafio">
-        <h2 id="titulo-desafio">Desafio</h2>
+        <p className="kicker">Põe-te à prova</p>
+        <h2 id="titulo-desafio" className="page-title">
+          Desafio
+        </h2>
         <p className="lede">Escolhe um jogo. São 8 perguntas, com pontos e uma sequência se acertares de seguida.</p>
         <div className="mode-grid">
           {MODES.map((item) => (
             <button key={item.id} type="button" className="mode-card" onClick={() => start(item.id)}>
-              <span>{item.title}</span>
-              <small>{item.text}</small>
+              <ModeDemo mode={item.id} />
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
             </button>
           ))}
         </div>
@@ -142,25 +171,35 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
             : 'Desta vez não saiu nenhum acerto. Explora a tabela e tenta outra vez.'
     return (
       <section className="quiz" aria-labelledby="titulo-resultado">
-        <h2 id="titulo-resultado">Resultado</h2>
+        <p className="kicker">Fim da ronda</p>
+        <h2 id="titulo-resultado" className="page-title" tabIndex={-1} ref={resultsTitle}>
+          Resultado
+        </h2>
         <div className="results">
-          <p className="stars" aria-label={starsLabel(resultStars)}>
+          <p className="stars" role="img" aria-label={starsLabel(resultStars)}>
             {[1, 2, 3].map((star) => (
-              <IconStar key={star} filled={star <= resultStars} />
+              <span key={star} className={star <= resultStars ? undefined : 'off'}>
+                <IconStar filled={star <= resultStars} size={38} />
+              </span>
             ))}
           </p>
           <p className="score-line">
             Acertaste {correct} em {ROUND_SIZE}.
           </p>
           <p>{message}</p>
-          <p>
-            Pontos: <strong>{score}</strong> · melhor sequência: <strong>{bestStreak}</strong>
-          </p>
-          <div className="dialog-actions">
-            <button type="button" onClick={() => start(mode)}>
+          <div className="result-stats">
+            <span className="pill">
+              <b>{score}</b> pontos
+            </span>
+            <span className="pill">
+              melhor sequência <b>{bestStreak}</b>
+            </span>
+          </div>
+          <div className="actions">
+            <button type="button" className="btn primary" onClick={() => start(mode)}>
               Outra ronda
             </button>
-            <button type="button" className="ghost" onClick={() => setPhase('pick')}>
+            <button type="button" className="btn ghost" onClick={() => setPhase('pick')}>
               Escolher outro jogo
             </button>
           </div>
@@ -171,41 +210,54 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
 
   if (!question) return null
   const answered = picked != null
+  const streakText = streak > 1 ? `${streak} certas de seguida` : streak === 1 ? '1 certa' : 'Sequência: 0'
 
   return (
     <section className="quiz" aria-labelledby="titulo-pergunta">
-      <div className="quiz-banner">
-        <p className="q-meta">
-          <span>
+      <div className="quiz-head">
+        <div className="quiz-stats">
+          <span className="count">
             Pergunta {index + 1} de {ROUND_SIZE}
           </span>
-          <span>{score} pontos</span>
-          <span>{streak > 1 ? `${streak} certas de seguida` : streak === 1 ? '1 certa' : 'Sequência: 0'}</span>
-        </p>
+          <span className="pill">
+            <b>{score}</b> pontos
+          </span>
+          <span className={streak > 1 ? 'pill hot' : 'pill'}>{streakText}</span>
+        </div>
+        <div className="steps" aria-hidden="true">
+          {Array.from({ length: ROUND_SIZE }, (_, step) => (
+            <i key={step} className={step < index || (step === index && answered) ? 'done' : step === index ? 'now' : undefined} />
+          ))}
+        </div>
         <h2 id="titulo-pergunta">{questionPrompt(question)}</h2>
         <p className="sr-only" aria-live="polite">
           {live}
         </p>
         {answered ? (
-          <div className="feedback">
+          <div className={wrongZ == null ? 'feedback right' : 'feedback wrong'}>
             <p>{live}</p>
-            <div className="dialog-actions">
-              <button type="button" className="ghost" onClick={() => onOpen(question.answer.z)}>
-                Ver a ficha
-              </button>
-              <button type="button" onClick={next}>
-                {index + 1 >= ROUND_SIZE ? 'Ver resultado' : 'Seguinte'}
-              </button>
-            </div>
+            <button type="button" className="btn ghost small" onClick={() => onOpen(question.answer.z)}>
+              Ver a ficha
+            </button>
+            <button type="button" className="btn primary small" ref={nextButton} onClick={next}>
+              {index + 1 >= ROUND_SIZE ? 'Ver resultado' : 'Seguinte'}
+            </button>
           </div>
         ) : null}
       </div>
       {mode === 'find' ? (
-        <PeriodicTable elements={elements} tileStyle={look} onOpen={(z) => {
-          const chosen = elements.find((element) => element.z === z)
-          if (!chosen) return
-          answerWith(chosen, chosen.z === question.answer.z)
-        }} />
+        <div className="table-card quiz-table">
+          <PeriodicTable
+            elements={elements}
+            tileStyle={look}
+            animate={false}
+            onOpen={(z) => {
+              const chosen = elements.find((element) => element.z === z)
+              if (!chosen) return
+              answerWith(chosen, chosen.z === question.answer.z)
+            }}
+          />
+        </div>
       ) : (
         <div className="choices" role="group" aria-label="Respostas">
           {question.options.map((option, optionIndex) => {
@@ -227,5 +279,41 @@ export function Quiz({ elements, onFinish, onDiscover, onOpen }: Props) {
         </div>
       )}
     </section>
+  )
+}
+
+/** Pequeno exemplo de cada jogo, para o cartão de escolha. */
+function ModeDemo({ mode }: { mode: QuizMode }) {
+  const chip = (text: string, color?: string, ask = false) => (
+    <span className={ask ? 'chip ask' : 'chip'} style={color ? ({ '--swatch': color } as CSSProperties) : undefined}>
+      {text}
+    </span>
+  )
+  return (
+    <div className="demo" aria-hidden="true">
+      {mode === 'symbol' ? (
+        <>
+          {chip('Oxigénio', CATEGORY_MAP.nonmetal.color)}
+          <IconArrow />
+          {chip('?', undefined, true)}
+        </>
+      ) : mode === 'name' ? (
+        <>
+          {chip('Fe', CATEGORY_MAP.transition.color)}
+          <IconArrow />
+          {chip('?', undefined, true)}
+        </>
+      ) : (
+        <>
+          {chip('Ouro', CATEGORY_MAP.alkaline.color)}
+          <IconArrow />
+          <span className="mini-grid">
+            {Array.from({ length: 24 }, (_, cell) => (
+              <i key={cell} className={cell === 15 ? 'hit' : undefined} style={cell === 15 ? ({ '--swatch': CATEGORY_MAP.alkaline.color } as CSSProperties) : undefined} />
+            ))}
+          </span>
+        </>
+      )}
+    </div>
   )
 }

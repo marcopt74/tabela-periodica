@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import type { CategoryId, Element } from '../data/types.ts'
 import { CATEGORY_MAP } from '../data/categories.ts'
 
@@ -16,7 +16,15 @@ type Props = {
   tileStyle: (element: Element) => TileLook
   onOpen: (z: number) => void
   onHoverCategory?: (category: CategoryId | null) => void
+  /** Chamado quando um elemento recebe o rato ou o foco; alimenta o painel de pré-visualização. */
+  onPeek?: (element: Element) => void
   highlightCategory?: CategoryId | null
+  /** Painel colocado no espaço vazio por cima dos metais de transição. */
+  peek?: ReactNode
+  /** Elementos já descobertos: ganham um pontinho no canto. */
+  seen?: ReadonlySet<number>
+  /** Desliga a entrada animada (usado quando a tabela se volta a desenhar a meio de um jogo). */
+  animate?: boolean
 }
 
 function neighbor(from: Element, stepCol: number, stepRow: number, list: readonly Element[]): Element | null {
@@ -32,7 +40,17 @@ function neighbor(from: Element, stepCol: number, stepRow: number, list: readonl
   return null
 }
 
-export function PeriodicTable({ elements, tileStyle, onOpen, onHoverCategory, highlightCategory = null }: Props) {
+export function PeriodicTable({
+  elements,
+  tileStyle,
+  onOpen,
+  onHoverCategory,
+  onPeek,
+  highlightCategory = null,
+  peek,
+  seen,
+  animate = true,
+}: Props) {
   const [activeZ, setActiveZ] = useState(1)
   const ordered = elements.slice().sort((a, b) => a.row - b.row || a.col - b.col)
 
@@ -84,7 +102,7 @@ export function PeriodicTable({ elements, tileStyle, onOpen, onHoverCategory, hi
           className={highlightCategory === 'lanthanide' ? 'gap-marker is-match' : 'gap-marker'}
           style={{ gridColumn: 3, gridRow: 6 }}
           aria-label="Ir para a fila dos lantanídeos"
-          onClick={() => document.getElementById('serie-lantanideos')?.scrollIntoView({ inline: 'start', block: 'nearest' })}
+          onClick={() => document.getElementById('el-57')?.focus()}
         >
           <span>57–71</span>
           <small>La–Lu</small>
@@ -94,11 +112,12 @@ export function PeriodicTable({ elements, tileStyle, onOpen, onHoverCategory, hi
           className={highlightCategory === 'actinide' ? 'gap-marker is-match' : 'gap-marker'}
           style={{ gridColumn: 3, gridRow: 7 }}
           aria-label="Ir para a fila dos actinídeos"
-          onClick={() => document.getElementById('serie-actinideos')?.scrollIntoView({ inline: 'start', block: 'nearest' })}
+          onClick={() => document.getElementById('el-89')?.focus()}
         >
           <span>89–103</span>
           <small>Ac–Lr</small>
         </button>
+        {peek}
         {elements.map((element) => {
           const look = tileStyle(element)
           const category = CATEGORY_MAP[element.category]
@@ -114,18 +133,32 @@ export function PeriodicTable({ elements, tileStyle, onOpen, onHoverCategory, hi
                 look.estimated ? 'is-estimated' : '',
                 look.pulse ? 'is-pulse' : '',
                 look.shake ? 'is-shake' : '',
+                seen?.has(element.z) ? 'is-seen' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={{ gridColumn: element.col, gridRow: element.row, '--swatch': look.swatch } as CSSProperties}
+              style={
+                {
+                  gridColumn: element.col,
+                  gridRow: element.row,
+                  '--swatch': look.swatch,
+                  '--c': element.col,
+                  '--r': element.row,
+                  ...(animate ? {} : { animation: 'none' }),
+                } as CSSProperties
+              }
               tabIndex={element.z === activeZ ? 0 : -1}
               aria-label={`${element.name}, símbolo ${element.symbol}, número ${element.z}, ${category.label}`}
               onFocus={() => {
                 setActiveZ(element.z)
                 onHoverCategory?.(element.category)
+                onPeek?.(element)
               }}
               onPointerEnter={(event) => {
-                if (event.pointerType === 'mouse') onHoverCategory?.(element.category)
+                if (event.pointerType === 'mouse') {
+                  onHoverCategory?.(element.category)
+                  onPeek?.(element)
+                }
               }}
               onClick={() => {
                 setActiveZ(element.z)
