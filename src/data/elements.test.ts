@@ -110,6 +110,96 @@ describe('integridade dos 118 elementos', () => {
   })
 })
 
+/** Camadas pela ordem de preenchimento (Madelung): 1s 2s 2p 3s 3p 4s 3d 4p 5s 4d 5p 6s 4f 5d 6p 7s 5f 6d 7p. */
+function aufbauShells(z: number): number[] {
+  const order: Array<[number, number]> = [
+    [1, 2], [2, 2], [2, 6], [3, 2], [3, 6], [4, 2], [3, 10], [4, 6], [5, 2], [4, 10], [5, 6],
+    [6, 2], [4, 14], [5, 10], [6, 6], [7, 2], [5, 14], [6, 10], [7, 6],
+  ]
+  const shells: number[] = []
+  let left = z
+  for (const [n, capacity] of order) {
+    if (left <= 0) break
+    const put = Math.min(left, capacity)
+    shells[n - 1] = (shells[n - 1] ?? 0) + put
+    left -= put
+  }
+  return shells
+}
+
+// Elementos cuja configuração real foge à ordem de preenchimento.
+const SHELL_EXCEPTIONS: Record<string, number[]> = {
+  Cr: [2, 8, 13, 1],
+  Cu: [2, 8, 18, 1],
+  Nb: [2, 8, 18, 12, 1],
+  Mo: [2, 8, 18, 13, 1],
+  Ru: [2, 8, 18, 15, 1],
+  Rh: [2, 8, 18, 16, 1],
+  Pd: [2, 8, 18, 18],
+  Ag: [2, 8, 18, 18, 1],
+  La: [2, 8, 18, 18, 9, 2],
+  Ce: [2, 8, 18, 19, 9, 2],
+  Gd: [2, 8, 18, 25, 9, 2],
+  Pt: [2, 8, 18, 32, 17, 1],
+  Au: [2, 8, 18, 32, 18, 1],
+  Ac: [2, 8, 18, 32, 18, 9, 2],
+  Th: [2, 8, 18, 32, 18, 10, 2],
+  Pa: [2, 8, 18, 32, 20, 9, 2],
+  U: [2, 8, 18, 32, 21, 9, 2],
+  Np: [2, 8, 18, 32, 22, 9, 2],
+  Cm: [2, 8, 18, 32, 25, 9, 2],
+  Lr: [2, 8, 18, 32, 32, 8, 3],
+}
+
+describe('coerência dos dados físicos', () => {
+  it('distribui os eletrões pelas camadas como na realidade', () => {
+    for (const element of elements) {
+      const expected = SHELL_EXCEPTIONS[element.symbol] ?? aufbauShells(element.z)
+      expect(element.shells, element.symbol).toEqual(expected)
+    }
+  })
+
+  it('põe cada elemento na coluna e na linha do seu grupo e período', () => {
+    for (const element of elements) {
+      if (element.row === 9 || element.row === 10) {
+        expect(element.group, element.symbol).toBeNull()
+        expect(element.row, element.symbol).toBe(element.period + 3)
+        continue
+      }
+      expect(element.row, element.symbol).toBe(element.period)
+      expect(element.col, element.symbol).toBe(element.group)
+    }
+    expect(bySymbol('Lu')).toMatchObject({ row: 9, period: 6 })
+    expect(bySymbol('Lr')).toMatchObject({ row: 10, period: 7 })
+  })
+
+  it('tem o período igual ao número de camadas, exceto o paládio', () => {
+    for (const element of elements) {
+      // O paládio é o único com a camada de valência vazia: 4 camadas, no período 5.
+      const expected = element.symbol === 'Pd' ? 4 : element.period
+      expect(element.shells.length, element.symbol).toBe(expected)
+    }
+  })
+
+  it('tem fusão abaixo da ebulição quando as duas existem', () => {
+    for (const element of elements) {
+      if (element.meltC != null && element.boilC != null) {
+        expect(element.meltC, element.symbol).toBeLessThan(element.boilC)
+      }
+    }
+  })
+
+  it('marca como isótopo exatamente os elementos sem massa padrão', () => {
+    const withStandardWeight = new Set([
+      ...elements.filter((element) => element.z <= 82 && !['Tc', 'Pm'].includes(element.symbol)).map((e) => e.symbol),
+      'Bi', 'Th', 'Pa', 'U',
+    ])
+    for (const element of elements) {
+      expect(element.massIsotope, element.symbol).toBe(!withStandardWeight.has(element.symbol))
+    }
+  })
+})
+
 describe('nomes em português europeu', () => {
   it('usa os nomes da escola em Portugal', () => {
     expect(bySymbol('H').name).toBe('Hidrogénio')

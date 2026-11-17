@@ -256,7 +256,7 @@ export const COPY: Record<string, ElementCopy> = {
   Tc: {
     name: 'Tecnécio',
     year: 1937,
-    fact: 'Foi o primeiro elemento feito por pessoas: na Terra quase não existe em natureza. O nome vem do grego e significa artificial.',
+    fact: 'Foi o primeiro elemento feito por pessoas: na Terra quase não existe na natureza. O nome vem do grego e significa artificial.',
     uses: 'Nos hospitais, uma forma de tecnécio ajuda a obter imagens do interior do corpo.',
   },
   Ru: {
@@ -556,7 +556,7 @@ export const COPY: Record<string, ElementCopy> = {
   Np: {
     name: 'Neptúnio',
     year: 1940,
-    fact: 'Foi o primeiro elemento mais pesado do que o urânio feito em laboratório. O nome vem de Neptuno, o planeta a seguir a Úrano.',
+    fact: 'Foi o primeiro elemento mais pesado do que o urânio feito em laboratório. O nome vem de Neptuno, o planeta a seguir a Urano.',
     uses: 'Forma-se nos reatores. Não tem um uso doméstico.',
   },
   Pu: {
