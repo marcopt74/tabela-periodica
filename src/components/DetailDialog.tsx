@@ -2,11 +2,19 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { getElement } from '../data/elements.ts'
 import { CATEGORY_MAP } from '../data/categories.ts'
 import type { CategoryId, Element } from '../data/types.ts'
-import { blockLabel, formatMass, groupLabel, yearLabel } from '../lib/format.ts'
+import { blockLabel, formatMass, formatTemp, groupLabel, yearLabel } from '../lib/format.ts'
 import { roomStateLong, roomStateShort } from '../lib/matter.ts'
 import { speakPt, stopSpeech } from '../lib/speech.ts'
 import { BohrAtom } from './BohrAtom.tsx'
-import { IconChevron, IconClose, IconSpeaker } from './Icons.tsx'
+import {
+  IconChevron,
+  IconClose,
+  IconCompass,
+  IconLightbulb,
+  IconSparkles,
+  IconSpeaker,
+  IconThermometer,
+} from './Icons.tsx'
 
 type Props = {
   element: Element
@@ -20,7 +28,8 @@ type Props = {
 export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate }: Props) {
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
-  const [speechNote, setSpeechNote] = useState<string | null>(null)
+  const [speechError, setSpeechError] = useState<{ z: number; text: string } | null>(null)
+  const speechNote = speechError?.z === element.z ? speechError.text : null
   const category = CATEGORY_MAP[element.category]
   const prevEl = element.z > 1 ? getElement(element.z - 1) : null
   const nextEl = element.z < 118 ? getElement(element.z + 1) : null
@@ -47,8 +56,8 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
         return
       }
       if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && onNavigate) {
-        const target = event.target as HTMLElement
-        if (target.tagName === 'INPUT' || target.tagName === 'SELECT') return
+        const activeTarget = event.target as HTMLElement
+        if (activeTarget.tagName === 'INPUT' || activeTarget.tagName === 'SELECT') return
         const next = event.key === 'ArrowRight' ? nextEl : prevEl
         if (next) {
           event.preventDefault()
@@ -84,10 +93,13 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
 
   function hear() {
     const ok = speakPt(element.name)
-    setSpeechNote(
+    setSpeechError(
       ok
         ? null
-        : 'Este navegador não consegue falar. Pede a alguém para ler o nome em voz alta.',
+        : {
+            z: element.z,
+            text: 'Este navegador não consegue falar. Pede a alguém para ler o nome em voz alta.',
+          },
     )
   }
 
@@ -102,13 +114,15 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
     {
       label: 'Massa atómica',
       value: `${formatMass(element)} u`,
-      note: element.massIsotope ? 'Massa do isótopo mais estável.' : undefined,
+      note: element.massIsotope ? 'Isótopo mais estável' : undefined,
     },
     { label: 'Estado a 20 °C', value: roomStateShort(element) },
     { label: 'Descoberta', value: yearLabel(element) },
-    { label: 'Grupo e período', value: `${groupLabel(element)} · Período ${element.period}` },
+    { label: 'Posição', value: `${groupLabel(element)} · Período ${element.period}` },
     { label: 'Bloco', value: blockLabel(element) },
   ]
+
+  const hasTemps = element.meltC != null || element.boilC != null
 
   return (
     <div className="backdrop" onMouseDown={onClose}>
@@ -126,17 +140,34 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
         </button>
         <div className="dlg-grid">
           <div className="dlg-side">
+            <div className="dlg-side-head">
+              <span className="dlg-z-pill">n.º {element.z}</span>
+              <span className="dlg-block-pill">{blockLabel(element)}</span>
+            </div>
             <BohrAtom element={element} />
           </div>
           <div className="dlg-main">
-            {isNew ? <p className="ribbon">Nova descoberta</p> : null}
-            <p className="eyebrow">{category.label}</p>
+            <div className="dlg-badges">
+              {isNew ? (
+                <p className="ribbon">
+                  <IconSparkles size={14} />
+                  Nova descoberta
+                </p>
+              ) : null}
+              <p className="eyebrow">
+                <i className="eyebrow-dot" aria-hidden="true" />
+                {category.label}
+              </p>
+            </div>
             <h2 id={titleId} lang="pt-PT">
               {element.name}
             </h2>
             <div className="sym-line">
               <span className="sym-chip">{element.symbol}</span>
-              <span className="n">n.º {element.z}</span>
+              <div className="sym-meta">
+                <span className="n">Número atómico {element.z}</span>
+                <span className="n-sub">{formatMass(element)} u</span>
+              </div>
               <button type="button" className="speak" onClick={hear}>
                 <IconSpeaker />
                 Ouvir o nome
@@ -154,18 +185,56 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
                 </div>
               ))}
             </dl>
-            <p className="state-note">{roomStateLong(element)}</p>
-            <div className="callout">
-              <h3>Sabias que…</h3>
-              <p>{element.fact}</p>
+            <div className="thermal-box">
+              <div className="thermal-head">
+                <IconThermometer size={17} />
+                <span>{roomStateLong(element)}</span>
+              </div>
+              {hasTemps ? (
+                <div className="thermal-points">
+                  {element.sublimes ? (
+                    <span className="thermal-chip">
+                      <small>Sublimação{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                      <strong>{formatTemp(element.boilC ?? element.meltC ?? 0)}</strong>
+                    </span>
+                  ) : (
+                    <>
+                      {element.meltC != null ? (
+                        <span className="thermal-chip">
+                          <small>Fusão{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                          <strong>{formatTemp(element.meltC)}</strong>
+                        </span>
+                      ) : null}
+                      {element.boilC != null ? (
+                        <span className="thermal-chip">
+                          <small>Ebulição{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                          <strong>{formatTemp(element.boilC)}</strong>
+                        </span>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
             </div>
-            <div className="callout">
-              <h3>Onde o encontras</h3>
-              <p>{element.uses}</p>
+            <div className="callout-grid">
+              <div className="callout callout-fact">
+                <h3>
+                  <IconLightbulb size={16} />
+                  Sabias que…
+                </h3>
+                <p>{element.fact}</p>
+              </div>
+              <div className="callout callout-uses">
+                <h3>
+                  <IconCompass size={16} />
+                  Onde o encontras
+                </h3>
+                <p>{element.uses}</p>
+              </div>
             </div>
             <div className="dlg-foot">
               {onNavigate ? (
-                <>
+                <div className="step-group">
                   <button
                     type="button"
                     className="step"
@@ -174,7 +243,14 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
                     onClick={() => step(prevEl, 'prev')}
                   >
                     <IconChevron direction="prev" />
-                    {prevEl?.symbol}
+                    {prevEl ? (
+                      <>
+                        <strong>{prevEl.symbol}</strong>
+                        <span className="step-name">{prevEl.name}</span>
+                      </>
+                    ) : (
+                      <span>Início</span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -183,10 +259,17 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
                     aria-label={nextEl ? `Elemento seguinte: ${nextEl.name}` : 'Sem elemento seguinte'}
                     onClick={() => step(nextEl, 'next')}
                   >
-                    {nextEl?.symbol}
+                    {nextEl ? (
+                      <>
+                        <span className="step-name">{nextEl.name}</span>
+                        <strong>{nextEl.symbol}</strong>
+                      </>
+                    ) : (
+                      <span>Fim</span>
+                    )}
                     <IconChevron direction="next" />
                   </button>
-                </>
+                </div>
               ) : null}
               <span className="spacer" />
               {onShowFamily ? (

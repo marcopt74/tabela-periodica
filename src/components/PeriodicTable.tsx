@@ -21,11 +21,19 @@ type Props = {
   highlightCategory?: CategoryId | null
   /** Painel colocado no espaço vazio por cima dos metais de transição. */
   peek?: ReactNode
-  /** Elementos já descobertos: ganham um pontinho no canto. */
+  /** Elementos já descobertos: ganham um marcador discreto no canto. */
   seen?: ReadonlySet<number>
   /** Desliga a entrada animada (usado quando a tabela se volta a desenhar a meio de um jogo). */
   animate?: boolean
+  /** Grupo e período activos, para destacar e permitir filtrar clicando nos cabeçalhos. */
+  selectedGroup?: number | null
+  selectedPeriod?: number | null
+  onSelectGroup?: (group: number | null) => void
+  onSelectPeriod?: (period: number | null) => void
 }
+
+const GROUPS = Array.from({ length: 18 }, (_, index) => index + 1)
+const PERIODS = [1, 2, 3, 4, 5, 6, 7] as const
 
 function neighbor(from: Element, stepCol: number, stepRow: number, list: readonly Element[]): Element | null {
   const lookup = new Map(list.map((element) => [`${element.col},${element.row}`, element]))
@@ -50,6 +58,10 @@ export function PeriodicTable({
   peek,
   seen,
   animate = true,
+  selectedGroup = null,
+  selectedPeriod = null,
+  onSelectGroup,
+  onSelectPeriod,
 }: Props) {
   const [activeZ, setActiveZ] = useState(1)
   const ordered = elements.slice().sort((a, b) => a.row - b.row || a.col - b.col)
@@ -91,16 +103,57 @@ export function PeriodicTable({
   return (
     <div className="table-scroll">
       <div className="ptable" role="group" aria-label="Tabela periódica dos 118 elementos" onKeyDown={onKeyDown}>
-        <div className="series-label" style={{ gridColumn: '1 / 3', gridRow: 9 }} id="serie-lantanideos">
-          Lantanídeos
+        <div className="axis-corner" aria-hidden="true" style={{ gridColumn: 1, gridRow: 1 }} />
+        {GROUPS.map((g) =>
+          onSelectGroup ? (
+            <button
+              key={`g-${g}`}
+              type="button"
+              className={selectedGroup === g ? 'axis-label is-active' : 'axis-label'}
+              style={{ gridColumn: g + 1, gridRow: 1 }}
+              aria-label={`Filtrar pelo grupo ${g}`}
+              aria-pressed={selectedGroup === g}
+              title={`Grupo ${g}`}
+              onClick={() => onSelectGroup(selectedGroup === g ? null : g)}
+            >
+              {g}
+            </button>
+          ) : (
+            <div key={`g-${g}`} className="axis-label is-static" style={{ gridColumn: g + 1, gridRow: 1 }} aria-hidden="true">
+              {g}
+            </div>
+          ),
+        )}
+        {PERIODS.map((p) =>
+          onSelectPeriod ? (
+            <button
+              key={`p-${p}`}
+              type="button"
+              className={selectedPeriod === p ? 'axis-label is-active' : 'axis-label'}
+              style={{ gridColumn: 1, gridRow: p + 1 }}
+              aria-label={`Filtrar pelo período ${p}`}
+              aria-pressed={selectedPeriod === p}
+              title={`Período ${p}`}
+              onClick={() => onSelectPeriod(selectedPeriod === p ? null : p)}
+            >
+              {p}
+            </button>
+          ) : (
+            <div key={`p-${p}`} className="axis-label is-static" style={{ gridColumn: 1, gridRow: p + 1 }} aria-hidden="true">
+              {p}
+            </div>
+          ),
+        )}
+        <div className="series-label" style={{ gridColumn: '1 / 4', gridRow: 10 }} id="serie-lantanideos">
+          <span>Lantanídeos</span>
         </div>
-        <div className="series-label" style={{ gridColumn: '1 / 3', gridRow: 10 }} id="serie-actinideos">
-          Actinídeos
+        <div className="series-label" style={{ gridColumn: '1 / 4', gridRow: 11 }} id="serie-actinideos">
+          <span>Actinídeos</span>
         </div>
         <button
           type="button"
           className={highlightCategory === 'lanthanide' ? 'gap-marker is-match' : 'gap-marker'}
-          style={{ gridColumn: 3, gridRow: 6 }}
+          style={{ gridColumn: 4, gridRow: 7 }}
           aria-label="Ir para a fila dos lantanídeos"
           onClick={() => document.getElementById('el-57')?.focus()}
         >
@@ -110,7 +163,7 @@ export function PeriodicTable({
         <button
           type="button"
           className={highlightCategory === 'actinide' ? 'gap-marker is-match' : 'gap-marker'}
-          style={{ gridColumn: 3, gridRow: 7 }}
+          style={{ gridColumn: 4, gridRow: 8 }}
           aria-label="Ir para a fila dos actinídeos"
           onClick={() => document.getElementById('el-89')?.focus()}
         >
@@ -139,8 +192,8 @@ export function PeriodicTable({
                 .join(' ')}
               style={
                 {
-                  gridColumn: element.col,
-                  gridRow: element.row,
+                  gridColumn: element.col + 1,
+                  gridRow: element.row + 1,
                   '--swatch': look.swatch,
                   '--c': element.col,
                   '--r': element.row,

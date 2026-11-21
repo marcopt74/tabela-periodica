@@ -14,61 +14,61 @@ export const CATEGORY_ORDER: CategoryMeta[] = [
     id: 'alkali',
     label: 'Metais alcalinos',
     hint: 'Grupo 1, sem o hidrogénio. Moles e muito reativos.',
-    color: '#ff8d7a',
+    color: '#ff8b78',
   },
   {
     id: 'alkaline',
     label: 'Metais alcalino-terrosos',
     hint: 'Grupo 2. Reativos, mas mais calmos do que os alcalinos.',
-    color: '#ffbf3c',
+    color: '#ffc442',
   },
   {
     id: 'transition',
     label: 'Metais de transição',
     hint: 'O bloco do meio: ferro, cobre, ouro e muitos outros.',
-    color: '#3ecfb8',
+    color: '#47d4c0',
   },
   {
     id: 'post',
     label: 'Outros metais',
     hint: 'Como o alumínio, o estanho e o chumbo.',
-    color: '#5eb0f0',
+    color: '#6eb7f7',
   },
   {
     id: 'metalloid',
     label: 'Semimetais',
     hint: 'A meio caminho entre metais e não-metais.',
-    color: '#b09af5',
+    color: '#b5de60',
   },
   {
     id: 'nonmetal',
     label: 'Não-metais',
     hint: 'Inclui o hidrogénio, o carbono, o azoto e o oxigénio.',
-    color: '#4dcc86',
+    color: '#55d68d',
   },
   {
     id: 'halogen',
     label: 'Halogéneos',
     hint: 'Grupo 17. Com os metais, formam sais.',
-    color: '#f27aaa',
+    color: '#f884b4',
   },
   {
     id: 'noble',
     label: 'Gases nobres',
     hint: 'Grupo 18. Quase não reagem com ninguém.',
-    color: '#a4a8f7',
+    color: '#a8a6fc',
   },
   {
     id: 'lanthanide',
     label: 'Lantanídeos',
     hint: 'A primeira fila de baixo. Muitos fazem ímanes fortes.',
-    color: '#f28cbc',
+    color: '#e39ae8',
   },
   {
     id: 'actinide',
     label: 'Actinídeos',
     hint: 'A segunda fila de baixo. São radioativos.',
-    color: '#f5a35a',
+    color: '#f9a85c',
   },
 ]
 
@@ -77,10 +77,10 @@ export const CATEGORY_MAP: Record<CategoryId, CategoryMeta> = Object.fromEntries
 ) as Record<CategoryId, CategoryMeta>
 
 export const PHASE_COLORS: Record<Phase, string> = {
-  solid: '#c5d0e4',
-  liquid: '#7ed4e8',
-  gas: '#f2c14e',
-  unknown: '#e4e0d8',
+  solid: '#b8cbe8',
+  liquid: '#6cd3ec',
+  gas: '#f7c954',
+  unknown: '#dedad2',
 }
 
 export const PHASE_LABEL: Record<Phase, string> = {
