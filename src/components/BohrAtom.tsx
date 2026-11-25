@@ -7,7 +7,7 @@ import { IconPause, IconPlay } from './Icons.tsx'
 const MAX_DOTS = 8
 
 function shellSize(index: number, total: number): number {
-  if (total === 1) return 62
+  if (total === 1) return 60
   const start = 36
   const end = 88
   return start + ((index + 1) / total) * (end - start)
@@ -68,20 +68,22 @@ export function BohrAtom({ element }: { element: Element }) {
             aria-pressed={paused}
             onClick={() => setPaused((value) => !value)}
           >
-            {paused ? <IconPlay /> : <IconPause />}
-            <span>{paused ? 'Rodar órbitas' : 'Pausar'}</span>
+            {paused ? <IconPlay size={12} /> : <IconPause size={12} />}
+            <span>{paused ? 'Rodar' : 'Pausar'}</span>
           </button>
         ) : null}
       </div>
-      <figcaption className="shell-list">
-        <span className="shell-nucleus">
+      <figcaption className="atom-caption">
+        <p className="atom-nucleus-summary">
           {protonText} · {neutronHint}
-        </span>
-        {element.shells.map((count, index) => (
-          <span key={index} className={index === lastIndex ? 'is-outer' : undefined}>
-            {index + 1}.ª camada · {count} {count === 1 ? 'eletrão' : 'eletrões'}
-          </span>
-        ))}
+        </p>
+        <div className="shell-list">
+          {element.shells.map((count, index) => (
+            <span key={index} className={index === lastIndex ? 'is-outer' : undefined}>
+              {index + 1}.ª · {count} e⁻
+            </span>
+          ))}
+        </div>
       </figcaption>
     </figure>
   )

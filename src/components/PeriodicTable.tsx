@@ -15,7 +15,6 @@ type Props = {
   elements: readonly Element[]
   tileStyle: (element: Element) => TileLook
   onOpen: (z: number) => void
-  onHoverCategory?: (category: CategoryId | null) => void
   /** Chamado quando um elemento recebe o rato ou o foco; alimenta o painel de pré-visualização. */
   onPeek?: (element: Element) => void
   highlightCategory?: CategoryId | null
@@ -23,9 +22,13 @@ type Props = {
   peek?: ReactNode
   /** Elementos já descobertos: ganham um marcador discreto no canto. */
   seen?: ReadonlySet<number>
+  /** Elemento atualmente aberto na gaveta lateral, para destaque espacial na tabela. */
+  selectedZ?: number | null
+  /** Ativa maior contraste de cor no modo de temperatura. */
+  tempMode?: boolean
   /** Desliga a entrada animada (usado quando a tabela se volta a desenhar a meio de um jogo). */
   animate?: boolean
-  /** Grupo e período activos, para destacar e permitir filtrar clicando nos cabeçalhos. */
+  /** Grupo e período ativos, para destacar e permitir filtrar clicando nos cabeçalhos. */
   selectedGroup?: number | null
   selectedPeriod?: number | null
   onSelectGroup?: (group: number | null) => void
@@ -52,11 +55,12 @@ export function PeriodicTable({
   elements,
   tileStyle,
   onOpen,
-  onHoverCategory,
   onPeek,
   highlightCategory = null,
   peek,
   seen,
+  selectedZ = null,
+  tempMode = false,
   animate = true,
   selectedGroup = null,
   selectedPeriod = null,
@@ -102,8 +106,20 @@ export function PeriodicTable({
 
   return (
     <div className="table-scroll">
-      <div className="ptable" role="group" aria-label="Tabela periódica dos 118 elementos" onKeyDown={onKeyDown}>
-        <div className="axis-corner" aria-hidden="true" style={{ gridColumn: 1, gridRow: 1 }} />
+      <div
+        className={tempMode ? 'ptable is-temp-mode' : 'ptable'}
+        role="group"
+        aria-label="Tabela periódica dos 118 elementos"
+        onKeyDown={onKeyDown}
+      >
+        <div
+          className="axis-corner"
+          aria-hidden="true"
+          style={{ gridColumn: 1, gridRow: 1 }}
+          title="Períodos (linhas) e grupos (colunas)"
+        >
+          <span>P/G</span>
+        </div>
         {GROUPS.map((g) =>
           onSelectGroup ? (
             <button
@@ -113,7 +129,7 @@ export function PeriodicTable({
               style={{ gridColumn: g + 1, gridRow: 1 }}
               aria-label={`Filtrar pelo grupo ${g}`}
               aria-pressed={selectedGroup === g}
-              title={`Grupo ${g}`}
+              title={`Filtrar pelo grupo ${g}`}
               onClick={() => onSelectGroup(selectedGroup === g ? null : g)}
             >
               {g}
@@ -133,7 +149,7 @@ export function PeriodicTable({
               style={{ gridColumn: 1, gridRow: p + 1 }}
               aria-label={`Filtrar pelo período ${p}`}
               aria-pressed={selectedPeriod === p}
-              title={`Período ${p}`}
+              title={`Filtrar pelo período ${p}`}
               onClick={() => onSelectPeriod(selectedPeriod === p ? null : p)}
             >
               {p}
@@ -174,6 +190,7 @@ export function PeriodicTable({
         {elements.map((element) => {
           const look = tileStyle(element)
           const category = CATEGORY_MAP[element.category]
+          const isSelected = selectedZ === element.z
           return (
             <button
               key={element.z}
@@ -187,6 +204,7 @@ export function PeriodicTable({
                 look.pulse ? 'is-pulse' : '',
                 look.shake ? 'is-shake' : '',
                 seen?.has(element.z) ? 'is-seen' : '',
+                isSelected ? 'is-selected' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -202,14 +220,13 @@ export function PeriodicTable({
               }
               tabIndex={element.z === activeZ ? 0 : -1}
               aria-label={`${element.name}, símbolo ${element.symbol}, número ${element.z}, ${category.label}`}
+              aria-current={isSelected ? 'true' : undefined}
               onFocus={() => {
                 setActiveZ(element.z)
-                onHoverCategory?.(element.category)
                 onPeek?.(element)
               }}
               onPointerEnter={(event) => {
                 if (event.pointerType === 'mouse') {
-                  onHoverCategory?.(element.category)
                   onPeek?.(element)
                 }
               }}

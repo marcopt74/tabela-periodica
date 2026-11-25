@@ -28,6 +28,7 @@ type Props = {
 export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate }: Props) {
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const [speechError, setSpeechError] = useState<{ z: number; text: string } | null>(null)
   const speechNote = speechError?.z === element.z ? speechError.text : null
   const category = CATEGORY_MAP[element.category]
@@ -36,9 +37,21 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
   const movedRef = useRef<'prev' | 'next' | null>(null)
 
   useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+      stopSpeech()
+      previous?.focus()
+    }
+  }, [])
+
+  useEffect(() => {
+    stopSpeech()
+    bodyRef.current?.scrollTo({ top: 0 })
     const root = ref.current
     if (!root) return
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusable = () =>
       [...root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
         (node) => !node.hasAttribute('disabled'),
@@ -49,6 +62,7 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
     const target = moved === 'prev' ? steps[0] : moved === 'next' ? steps[1] : null
     if (target && !target.hasAttribute('disabled')) target.focus()
     else focusable()[0]?.focus()
+
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -81,13 +95,8 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
       }
     }
     document.addEventListener('keydown', onKey)
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = previousOverflow
-      stopSpeech()
-      previous?.focus()
     }
   }, [onClose, onNavigate, element.z, prevEl, nextEl])
 
@@ -109,25 +118,12 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
     onNavigate(target.z)
   }
 
-  const facts: { label: string; value: string; note?: string }[] = [
-    { label: 'Número atómico', value: String(element.z) },
-    {
-      label: 'Massa atómica',
-      value: `${formatMass(element)} u`,
-      note: element.massIsotope ? 'Isótopo mais estável' : undefined,
-    },
-    { label: 'Estado a 20 °C', value: roomStateShort(element) },
-    { label: 'Descoberta', value: yearLabel(element) },
-    { label: 'Posição', value: `${groupLabel(element)} · Período ${element.period}` },
-    { label: 'Bloco', value: blockLabel(element) },
-  ]
-
   const hasTemps = element.meltC != null || element.boilC != null
 
   return (
-    <div className="backdrop" onMouseDown={onClose}>
+    <div className="drawer-backdrop" onMouseDown={onClose}>
       <div
-        className="dialog"
+        className="drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -135,151 +131,170 @@ export function DetailDialog({ element, isNew, onClose, onShowFamily, onNavigate
         style={{ '--swatch': category.color } as CSSProperties}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button type="button" className="close" onClick={onClose} aria-label="Fechar a ficha">
-          <IconClose />
-        </button>
-        <div className="dlg-grid">
-          <div className="dlg-side">
-            <div className="dlg-side-head">
-              <span className="dlg-z-pill">n.º {element.z}</span>
-              <span className="dlg-block-pill">{blockLabel(element)}</span>
-            </div>
-            <BohrAtom element={element} />
+        <div className="drawer-grab" aria-hidden="true" />
+        <header className="drawer-header">
+          <div className="drawer-header-meta">
+            <span className="eyebrow">
+              <i className="eyebrow-dot" aria-hidden="true" />
+              {category.label}
+            </span>
+            {isNew ? (
+              <span className="ribbon">
+                <IconSparkles size={13} />
+                Nova descoberta
+              </span>
+            ) : null}
           </div>
-          <div className="dlg-main">
-            <div className="dlg-badges">
-              {isNew ? (
-                <p className="ribbon">
-                  <IconSparkles size={14} />
-                  Nova descoberta
-                </p>
-              ) : null}
-              <p className="eyebrow">
-                <i className="eyebrow-dot" aria-hidden="true" />
-                {category.label}
+          <button type="button" className="drawer-close" onClick={onClose} aria-label="Fechar a ficha">
+            <IconClose size={19} />
+          </button>
+        </header>
+
+        <div className="drawer-body" ref={bodyRef}>
+          <div className="drawer-hero">
+            <div className="specimen-tile" aria-hidden="true">
+              <span className="specimen-z">{element.z}</span>
+              <span className="specimen-sym">{element.symbol}</span>
+            </div>
+            <div className="drawer-identity">
+              <h2 id={titleId} lang="pt-PT">
+                {element.name}
+              </h2>
+              <p className="drawer-subtitle">
+                {groupLabel(element)} · Período {element.period} · {blockLabel(element)}
               </p>
             </div>
-            <h2 id={titleId} lang="pt-PT">
-              {element.name}
-            </h2>
-            <div className="sym-line">
-              <span className="sym-chip">{element.symbol}</span>
-              <div className="sym-meta">
-                <span className="n">Número atómico {element.z}</span>
-                <span className="n-sub">{formatMass(element)} u</span>
+            <button type="button" className="speak-btn" onClick={hear} aria-label={`Ouvir o nome ${element.name}`}>
+              <IconSpeaker size={17} />
+              <span>Ouvir</span>
+            </button>
+          </div>
+          {speechNote ? <p className="speech-note">{speechNote}</p> : null}
+
+          <section className="drawer-section drawer-atom-section" aria-label="Modelo atómico">
+            <BohrAtom element={element} />
+          </section>
+
+          <section className="drawer-section" aria-label="Propriedades principais">
+            <dl className="prop-grid">
+              <div>
+                <dt>Massa atómica</dt>
+                <dd>
+                  {formatMass(element)} u
+                  {element.massIsotope ? <small>Isótopo mais estável</small> : null}
+                </dd>
               </div>
-              <button type="button" className="speak" onClick={hear}>
-                <IconSpeaker />
-                Ouvir o nome
+              <div>
+                <dt>Estado a 20 °C</dt>
+                <dd>{roomStateShort(element)}</dd>
+              </div>
+              <div>
+                <dt>Descoberta</dt>
+                <dd>{yearLabel(element)}</dd>
+              </div>
+              <div>
+                <dt>Camadas</dt>
+                <dd>{element.shells.join(' · ')}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="drawer-section drawer-thermal" aria-label="Comportamento térmico">
+            <div className="thermal-head">
+              <IconThermometer size={16} />
+              <p>{roomStateLong(element)}</p>
+            </div>
+            {hasTemps ? (
+              <div className="thermal-points">
+                {element.sublimes ? (
+                  <span className="thermal-chip">
+                    <small>Sublimação{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                    <strong>{formatTemp(element.boilC ?? element.meltC ?? 0)}</strong>
+                  </span>
+                ) : (
+                  <>
+                    {element.meltC != null ? (
+                      <span className="thermal-chip">
+                        <small>Fusão{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                        <strong>{formatTemp(element.meltC)}</strong>
+                      </span>
+                    ) : null}
+                    {element.boilC != null ? (
+                      <span className="thermal-chip">
+                        <small>Ebulição{element.tempsEstimated ? ' (prevista)' : ''}</small>
+                        <strong>{formatTemp(element.boilC)}</strong>
+                      </span>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="drawer-section drawer-stories" aria-label="Curiosidades e aplicações">
+            <article className="story-block story-fact">
+              <h3>
+                <IconLightbulb size={15} />
+                Sabias que…
+              </h3>
+              <p>{element.fact}</p>
+            </article>
+            <article className="story-block story-uses">
+              <h3>
+                <IconCompass size={15} />
+                Onde o encontras
+              </h3>
+              <p>{element.uses}</p>
+            </article>
+          </section>
+        </div>
+
+        <footer className="drawer-footer">
+          {onNavigate ? (
+            <div className="step-group">
+              <button
+                type="button"
+                className="step"
+                disabled={!prevEl}
+                aria-label={prevEl ? `Elemento anterior: ${prevEl.name}` : 'Sem elemento anterior'}
+                onClick={() => step(prevEl, 'prev')}
+              >
+                <IconChevron direction="prev" size={14} />
+                {prevEl ? (
+                  <>
+                    <strong>{prevEl.symbol}</strong>
+                    <span className="step-name">{prevEl.name}</span>
+                  </>
+                ) : (
+                  <span>Início</span>
+                )}
+              </button>
+              <button
+                type="button"
+                className="step"
+                disabled={!nextEl}
+                aria-label={nextEl ? `Elemento seguinte: ${nextEl.name}` : 'Sem elemento seguinte'}
+                onClick={() => step(nextEl, 'next')}
+              >
+                {nextEl ? (
+                  <>
+                    <span className="step-name">{nextEl.name}</span>
+                    <strong>{nextEl.symbol}</strong>
+                  </>
+                ) : (
+                  <span>Fim</span>
+                )}
+                <IconChevron direction="next" size={14} />
               </button>
             </div>
-            {speechNote ? <p className="speech-note">{speechNote}</p> : null}
-            <dl className="facts">
-              {facts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>
-                    {fact.value}
-                    {fact.note ? <small>{fact.note}</small> : null}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <div className="thermal-box">
-              <div className="thermal-head">
-                <IconThermometer size={17} />
-                <span>{roomStateLong(element)}</span>
-              </div>
-              {hasTemps ? (
-                <div className="thermal-points">
-                  {element.sublimes ? (
-                    <span className="thermal-chip">
-                      <small>Sublimação{element.tempsEstimated ? ' (prevista)' : ''}</small>
-                      <strong>{formatTemp(element.boilC ?? element.meltC ?? 0)}</strong>
-                    </span>
-                  ) : (
-                    <>
-                      {element.meltC != null ? (
-                        <span className="thermal-chip">
-                          <small>Fusão{element.tempsEstimated ? ' (prevista)' : ''}</small>
-                          <strong>{formatTemp(element.meltC)}</strong>
-                        </span>
-                      ) : null}
-                      {element.boilC != null ? (
-                        <span className="thermal-chip">
-                          <small>Ebulição{element.tempsEstimated ? ' (prevista)' : ''}</small>
-                          <strong>{formatTemp(element.boilC)}</strong>
-                        </span>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              ) : null}
-            </div>
-            <div className="callout-grid">
-              <div className="callout callout-fact">
-                <h3>
-                  <IconLightbulb size={16} />
-                  Sabias que…
-                </h3>
-                <p>{element.fact}</p>
-              </div>
-              <div className="callout callout-uses">
-                <h3>
-                  <IconCompass size={16} />
-                  Onde o encontras
-                </h3>
-                <p>{element.uses}</p>
-              </div>
-            </div>
-            <div className="dlg-foot">
-              {onNavigate ? (
-                <div className="step-group">
-                  <button
-                    type="button"
-                    className="step"
-                    disabled={!prevEl}
-                    aria-label={prevEl ? `Elemento anterior: ${prevEl.name}` : 'Sem elemento anterior'}
-                    onClick={() => step(prevEl, 'prev')}
-                  >
-                    <IconChevron direction="prev" />
-                    {prevEl ? (
-                      <>
-                        <strong>{prevEl.symbol}</strong>
-                        <span className="step-name">{prevEl.name}</span>
-                      </>
-                    ) : (
-                      <span>Início</span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="step"
-                    disabled={!nextEl}
-                    aria-label={nextEl ? `Elemento seguinte: ${nextEl.name}` : 'Sem elemento seguinte'}
-                    onClick={() => step(nextEl, 'next')}
-                  >
-                    {nextEl ? (
-                      <>
-                        <span className="step-name">{nextEl.name}</span>
-                        <strong>{nextEl.symbol}</strong>
-                      </>
-                    ) : (
-                      <span>Fim</span>
-                    )}
-                    <IconChevron direction="next" />
-                  </button>
-                </div>
-              ) : null}
-              <span className="spacer" />
-              {onShowFamily ? (
-                <button type="button" className="btn ghost small" onClick={() => onShowFamily(element.category)}>
-                  Mostrar a família na tabela
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+          ) : null}
+          <span className="spacer" />
+          {onShowFamily ? (
+            <button type="button" className="btn ghost tiny" onClick={() => onShowFamily(element.category)}>
+              Ver família
+            </button>
+          ) : null}
+        </footer>
       </div>
     </div>
   )

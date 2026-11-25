@@ -4,6 +4,7 @@ import { Confetti } from './components/Confetti.tsx'
 import { DetailDialog } from './components/DetailDialog.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import {
+  IconArrow,
   IconBolt,
   IconClose,
   IconGrid,
@@ -49,7 +50,19 @@ function loadInitialTheme(): Theme {
   return 'light'
 }
 
-function Peek({ element, phase, celsius }: { element: Element | null; phase: Phase | null; celsius: number }) {
+function Peek({
+  element,
+  phase,
+  celsius,
+  seen,
+  onOpen,
+}: {
+  element: Element | null
+  phase: Phase | null
+  celsius: number
+  seen: ReadonlySet<number>
+  onOpen: (z: number) => void
+}) {
   if (!element) {
     return (
       <div className="peek empty-state" aria-live="polite">
@@ -66,21 +79,33 @@ function Peek({ element, phase, celsius }: { element: Element | null; phase: Pha
           </ul>
         </div>
         <div className="peek-empty-copy">
-          <strong>Explora os 118 elementos</strong>
-          <p>Passa o rato num quadrado para pré-visualizar ou toca nele para abrir a ficha completa.</p>
+          <strong>Atlas dos 118 elementos</strong>
+          <p>Passa o rato num quadrado para inspecionar ou toca nele para abrir a ficha completa.</p>
+          <span className="peek-seen-key">
+            <i aria-hidden="true" />
+            Ponto no canto = já descoberto
+          </span>
         </div>
       </div>
     )
   }
   const category = CATEGORY_MAP[element.category]
   const swatch = phase ? PHASE_COLORS[phase] : category.color
+  const isSeen = seen.has(element.z)
+
   return (
     <div className="peek" aria-live="polite">
-      <div className="peek-tile" aria-hidden="true" style={{ '--swatch': swatch } as CSSProperties}>
+      <button
+        type="button"
+        className="peek-tile peek-tile-btn"
+        style={{ '--swatch': swatch } as CSSProperties}
+        onClick={() => onOpen(element.z)}
+        aria-label={`Abrir ficha de ${element.name}`}
+      >
         <span className="pk-z">{element.z}</span>
         <span className="pk-sym">{element.symbol}</span>
         <span className="pk-mass">{formatMass(element)}</span>
-      </div>
+      </button>
       <div className="peek-info">
         <div className="peek-title-row">
           <h3>{element.name}</h3>
@@ -88,13 +113,20 @@ function Peek({ element, phase, celsius }: { element: Element | null; phase: Pha
             <i aria-hidden="true" />
             {phase ? `${phaseLabel(phase)} a ${formatTemp(celsius)}` : category.label}
           </span>
+          {isSeen ? <span className="peek-discovered">Descoberto</span> : null}
         </div>
         <p className="meta">
           {groupLabel(element)} · Período {element.period} · {roomStateShort(element)} a 20 °C
         </p>
-        <p className="peek-shells">
-          <span>Camadas:</span> {element.shells.join(' · ')}
-        </p>
+        <div className="peek-foot-row">
+          <p className="peek-shells">
+            <span>Camadas:</span> {element.shells.join(' · ')}
+          </p>
+          <button type="button" className="peek-open-link" onClick={() => onOpen(element.z)}>
+            Abrir ficha
+            <IconArrow size={14} />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -134,6 +166,7 @@ function Explorer() {
   const [freshZ, setFreshZ] = useState<number | null>(null)
   const [confetti, setConfetti] = useState(0)
   const previousCount = useRef(save.discovered.length)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     writeSave(save)
@@ -142,7 +175,7 @@ function Explorer() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f1724' : '#f3f6fa')
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0d131c' : '#f7f5f0')
     try {
       window.localStorage.setItem(THEME_KEY, theme)
     } catch {
@@ -164,10 +197,24 @@ function Explorer() {
     document.title = titles[view]
   }, [view])
 
+  useEffect(() => {
+    if (view !== 'table') return
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const active = document.activeElement as HTMLElement | null
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return
+      if (document.querySelector('.drawer-backdrop')) return
+      event.preventDefault()
+      searchInputRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [view])
+
   const celsius = sliderToCelsius(slider)
   const kelvin = Math.max(0, Math.round(celsius + 273.15))
   const openElement = openZ == null ? null : getElement(openZ)
-  const highlight = hoverCategory ?? lockedCategory ?? (view === 'table' ? openElement?.category ?? null : null)
+  const highlight = !tempMode ? (hoverCategory ?? lockedCategory) : null
   const filtering = Boolean(query.trim() || group != null || period != null || highlight)
 
   const counts = useMemo(() => {
@@ -196,6 +243,7 @@ function Explorer() {
   function openCard(z: number) {
     setFreshZ(save.discovered.includes(z) ? null : z)
     setOpenZ(z)
+    setPeekZ(z)
     discover(z)
   }
 
@@ -211,7 +259,16 @@ function Explorer() {
 
   const closeCard = useCallback(() => setOpenZ(null), [])
 
+  const clearFilters = useCallback(() => {
+    setQuery('')
+    setGroup(null)
+    setPeriod(null)
+    setLockedCategory(null)
+    setHoverCategory(null)
+  }, [])
+
   const showFamily = useCallback((category: CategoryId) => {
+    setTempMode(false)
     setLockedCategory(category)
     setHoverCategory(null)
     setView('table')
@@ -265,15 +322,15 @@ function Explorer() {
           </button>
           <nav className="tabs" aria-label="Secções">
             <button type="button" aria-current={view === 'table' ? 'page' : undefined} onClick={() => setView('table')}>
-              <IconGrid size={17} />
+              <IconGrid size={16} />
               <span>Tabela</span>
             </button>
             <button type="button" aria-current={view === 'quiz' ? 'page' : undefined} onClick={() => setView('quiz')}>
-              <IconBolt size={17} />
+              <IconBolt size={16} />
               <span>Desafio</span>
             </button>
             <button type="button" aria-current={view === 'badges' ? 'page' : undefined} onClick={() => setView('badges')}>
-              <IconMedal size={17} />
+              <IconMedal size={16} />
               <span>Medalhas</span>
             </button>
           </nav>
@@ -288,8 +345,11 @@ function Explorer() {
                 <span>{discoveredPct}%</span>
               </div>
               <div className="progress-text">
-                <strong>{save.discovered.length} de 118</strong>
-                <span>descobertos</span>
+                <strong>
+                  {save.discovered.length}
+                  <span>/118</span>
+                </strong>
+                <small>descobertos</small>
               </div>
             </button>
             <button
@@ -299,7 +359,7 @@ function Explorer() {
               title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
               onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             >
-              {theme === 'dark' ? <IconSun size={20} /> : <IconMoon size={20} />}
+              {theme === 'dark' ? <IconSun size={19} /> : <IconMoon size={19} />}
             </button>
           </div>
         </header>
@@ -309,95 +369,113 @@ function Explorer() {
               <h2 id="titulo-tabela" className="sr-only">
                 Tabela periódica
               </h2>
-              <form className="toolbar" role="search" onSubmit={(event) => event.preventDefault()}>
-                <label className="field grow">
-                  <span>Procurar elemento</span>
-                  <span className="search-wrap">
-                    <IconSearch />
-                    <input
-                      type="text"
-                      inputMode="search"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Nome, símbolo ou número (ex: ouro, Fe, 8)"
-                      autoComplete="off"
-                      enterKeyHint="search"
-                    />
-                    {query ? (
-                      <button
-                        type="button"
-                        className="search-clear"
-                        aria-label="Limpar pesquisa"
-                        onClick={() => setQuery('')}
-                      >
-                        <IconClose size={15} />
-                      </button>
-                    ) : null}
-                  </span>
-                </label>
-                <label className="field">
-                  <span>Período</span>
+              <form className="command-bar" role="search" onSubmit={(event) => event.preventDefault()}>
+                <div className="search-field">
+                  <label htmlFor="element-search" className="sr-only">
+                    Procurar elemento
+                  </label>
+                  <IconSearch size={17} />
+                  <input
+                    ref={searchInputRef}
+                    id="element-search"
+                    type="text"
+                    inputMode="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        setQuery('')
+                        searchInputRef.current?.blur()
+                      }
+                    }}
+                    placeholder="Procurar nome, símbolo ou n.º (ex: ouro, Fe, 8)"
+                    autoComplete="off"
+                    enterKeyHint="search"
+                  />
+                  {query ? (
+                    <button
+                      type="button"
+                      className="search-clear"
+                      aria-label="Limpar pesquisa"
+                      onClick={() => {
+                        setQuery('')
+                        searchInputRef.current?.focus()
+                      }}
+                    >
+                      <IconClose size={14} />
+                    </button>
+                  ) : (
+                    <kbd className="search-kbd" aria-hidden="true">
+                      /
+                    </kbd>
+                  )}
+                </div>
+
+                <div className="command-selects">
                   <select
+                    aria-label="Filtrar por período"
+                    className={period != null ? 'ctrl-select is-active' : 'ctrl-select'}
                     value={period ?? ''}
                     onChange={(event) => setPeriod(event.target.value ? Number(event.target.value) : null)}
                   >
-                    <option value="">Todos</option>
+                    <option value="">Período: Todos</option>
                     {[1, 2, 3, 4, 5, 6, 7].map((item) => (
                       <option key={item} value={item}>
                         Período {item}
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="field">
-                  <span>Grupo</span>
                   <select
+                    aria-label="Filtrar por grupo"
+                    className={group != null ? 'ctrl-select is-active' : 'ctrl-select'}
                     value={group ?? ''}
                     onChange={(event) => setGroup(event.target.value ? Number(event.target.value) : null)}
                   >
-                    <option value="">Todos</option>
+                    <option value="">Grupo: Todos</option>
                     {Array.from({ length: 18 }, (_, index) => index + 1).map((item) => (
                       <option key={item} value={item}>
                         Grupo {item}
                       </option>
                     ))}
                   </select>
-                </label>
-                <div className="toolbar-extras">
-                  <label className={tempMode ? 'switch is-on' : 'switch'}>
-                    <input type="checkbox" checked={tempMode} onChange={(event) => setTempMode(event.target.checked)} />
-                    <span className="track" aria-hidden="true" />
-                    <IconThermometer size={17} />
-                    <span>Temperatura</span>
-                  </label>
+                </div>
+
+                <span className="command-divider" aria-hidden="true" />
+
+                <div className="command-actions">
                   <button
                     type="button"
-                    className="btn accent-soft small"
+                    className={tempMode ? 'ctrl-pill is-on' : 'ctrl-pill'}
+                    aria-pressed={tempMode}
+                    onClick={() => {
+                      setTempMode((current) => !current)
+                      setHoverCategory(null)
+                    }}
+                  >
+                    <IconThermometer size={16} />
+                    <span>Temperatura</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ctrl-pill is-accent"
                     onClick={openSurprise}
                     title="Abrir um elemento ao acaso"
                   >
-                    <IconSparkles size={16} />
+                    <IconSparkles size={15} />
                     <span>Surpresa</span>
                   </button>
                   {filtersOn ? (
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      onClick={() => {
-                        setQuery('')
-                        setGroup(null)
-                        setPeriod(null)
-                        setLockedCategory(null)
-                      }}
-                    >
-                      Limpar ({matchedCount})
+                    <button type="button" className="ctrl-pill is-reset" onClick={clearFilters}>
+                      <IconClose size={13} />
+                      <span>Limpar ({matchedCount})</span>
                     </button>
                   ) : null}
                 </div>
               </form>
+
               {tempMode ? (
-                <div className="temp-panel">
-                  <div className="temp-top">
+                <div className="temp-dock" role="region" aria-label="Controlo de temperatura">
+                  <div className="temp-dock-top">
                     <div className="temp-readout">
                       <strong>{formatTemp(celsius)}</strong>
                       <span className="temp-kelvin">{kelvin.toLocaleString('pt-PT')} K</span>
@@ -446,103 +524,112 @@ function Explorer() {
                         ) : null,
                       )}
                     </div>
-                    <p className="temp-counts" aria-live="polite">
-                      {(['solid', 'liquid', 'gas', 'unknown'] as const).map((phase) => (
-                        <span key={phase} className="phase-count-chip">
-                          <i style={{ background: PHASE_COLORS[phase] }} aria-hidden="true" />
-                          <b>{counts[phase]}</b>{' '}
-                          {phase === 'solid'
-                            ? 'sólidos'
-                            : phase === 'liquid'
-                              ? 'líquidos'
-                              : phase === 'gas'
-                                ? 'gases'
-                                : 'sem dados'}
-                        </span>
-                      ))}
-                    </p>
+                    <div className="temp-meta-row">
+                      <p className="temp-counts" aria-live="polite">
+                        {(['solid', 'liquid', 'gas', 'unknown'] as const).map((phase) => (
+                          <span key={phase} className="phase-count-chip">
+                            <i style={{ background: PHASE_COLORS[phase] }} aria-hidden="true" />
+                            <b>{counts[phase]}</b>{' '}
+                            {phase === 'solid'
+                              ? 'sólidos'
+                              : phase === 'liquid'
+                                ? 'líquidos'
+                                : phase === 'gas'
+                                  ? 'gases'
+                                  : 'sem dados'}
+                          </span>
+                        ))}
+                      </p>
+                      <span className="temp-est-note">Riscas = temperatura prevista</span>
+                    </div>
                   </div>
                 </div>
-              ) : null}
-              <div
-                onPointerLeave={(event) => {
-                  if (event.pointerType === 'mouse') setHoverCategory(null)
-                }}
-              >
-                <ul className="legend">
-                  {(tempMode
-                    ? (['solid', 'liquid', 'gas', 'unknown'] as const).map((phase) => (
-                        <li key={phase}>
-                          <span className="legend-note">
-                            <i style={{ background: PHASE_COLORS[phase] }} />
-                            {phaseLabel(phase)}
-                          </span>
-                        </li>
-                      ))
-                    : CATEGORY_ORDER.map((category) => (
-                        <li key={category.id}>
-                          <button
-                            type="button"
-                            aria-pressed={lockedCategory === category.id}
-                            className={hoverCategory === category.id && lockedCategory !== category.id ? 'is-hovered' : undefined}
-                            style={{ '--swatch': category.color } as CSSProperties}
-                            onClick={() =>
-                              setLockedCategory((current) => (current === category.id ? null : category.id))
-                            }
-                            onPointerEnter={(event) => {
-                              if (event.pointerType === 'mouse') setHoverCategory(category.id)
-                            }}
-                          >
-                            <i />
-                            {category.label}
-                          </button>
-                        </li>
-                      )))}
-                </ul>
-                {tempMode ? (
-                  <p className="hint">As riscas marcam temperaturas previstas: ainda não há uma amostra para medir.</p>
-                ) : activeCategoryMeta ? (
-                  <p className="hint hint-family" aria-live="polite">
-                    <i style={{ background: activeCategoryMeta.color }} aria-hidden="true" />
-                    <strong>{activeCategoryMeta.label}:</strong> {activeCategoryMeta.hint}
-                  </p>
-                ) : (
-                  <p className="hint">
-                    Passa o rato num elemento ou toca numa família, grupo ou período para destacar. No teclado, usa as setas e Enter.
-                  </p>
-                )}
-                <p className="scroll-hint">Desliza para o lado para veres os 18 grupos.</p>
-                <div className="table-card" id="tabela">
-                  <PeriodicTable
-                    elements={elements}
-                    tileStyle={tileStyle}
-                    onOpen={openCard}
-                    onHoverCategory={setHoverCategory}
-                    onPeek={(element) => setPeekZ(element.z)}
-                    highlightCategory={highlight}
-                    seen={seen}
-                    selectedGroup={group}
-                    selectedPeriod={period}
-                    onSelectGroup={setGroup}
-                    onSelectPeriod={setPeriod}
-                    peek={
-                      <Peek
-                        element={peekZ == null ? null : getElement(peekZ)}
-                        phase={peekZ != null && tempMode ? stateAt(getElement(peekZ), celsius) : null}
-                        celsius={celsius}
-                      />
-                    }
-                  />
+              ) : (
+                <div
+                  className="legend-block"
+                  onPointerLeave={(event) => {
+                    if (event.pointerType === 'mouse') setHoverCategory(null)
+                  }}
+                >
+                  <ul className="legend" aria-label="Filtrar por família química">
+                    {CATEGORY_ORDER.map((category) => (
+                      <li key={category.id}>
+                        <button
+                          type="button"
+                          aria-pressed={lockedCategory === category.id}
+                          className={hoverCategory === category.id && lockedCategory !== category.id ? 'is-hovered' : undefined}
+                          style={{ '--swatch': category.color } as CSSProperties}
+                          onClick={() =>
+                            setLockedCategory((current) => (current === category.id ? null : category.id))
+                          }
+                          onPointerEnter={(event) => {
+                            if (event.pointerType === 'mouse') setHoverCategory(category.id)
+                          }}
+                        >
+                          <i aria-hidden="true" />
+                          <span>{category.label}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="context-line" aria-live="polite">
+                    {activeCategoryMeta ? (
+                      <p className="hint-family">
+                        <i style={{ background: activeCategoryMeta.color }} aria-hidden="true" />
+                        <strong>{activeCategoryMeta.label}:</strong> {activeCategoryMeta.hint}
+                      </p>
+                    ) : (
+                      <p className="hint-quiet">
+                        Toca numa família, num grupo ou num período para destacar. No teclado, usa as setas e Enter.
+                      </p>
+                    )}
+                    <span className="scroll-hint">Desliza para veres os 18 grupos →</span>
+                  </div>
                 </div>
-                {matchedCount === 0 ? (
-                  <p className="empty" role="status">
-                    Não encontrei nenhum elemento com esses filtros. Experimenta «ouro», «Fe» ou «8», ou limpa os filtros.
-                  </p>
-                ) : null}
-                {period != null && period >= 6 ? (
-                  <p className="hint">O período {period} inclui a fila de baixo: os {period === 6 ? 'lantanídeos' : 'actinídeos'}.</p>
-                ) : null}
+              )}
+
+              <div className="table-card" id="tabela">
+                <PeriodicTable
+                  elements={elements}
+                  tileStyle={tileStyle}
+                  onOpen={openCard}
+                  onPeek={(element) => setPeekZ(element.z)}
+                  highlightCategory={highlight}
+                  seen={seen}
+                  selectedZ={openZ}
+                  tempMode={tempMode}
+                  selectedGroup={group}
+                  selectedPeriod={period}
+                  onSelectGroup={setGroup}
+                  onSelectPeriod={setPeriod}
+                  peek={
+                    <Peek
+                      element={peekZ == null ? null : getElement(peekZ)}
+                      phase={peekZ != null && tempMode ? stateAt(getElement(peekZ), celsius) : null}
+                      celsius={celsius}
+                      seen={seen}
+                      onOpen={openCard}
+                    />
+                  }
+                />
               </div>
+
+              {matchedCount === 0 ? (
+                <div className="empty-banner" role="status">
+                  <p>
+                    Nenhum elemento corresponde a estes filtros. Experimenta <strong>ouro</strong>, <strong>Fe</strong> ou{' '}
+                    <strong>8</strong>.
+                  </p>
+                  <button type="button" className="btn ghost tiny" onClick={clearFilters}>
+                    Limpar filtros
+                  </button>
+                </div>
+              ) : null}
+              {period != null && period >= 6 ? (
+                <p className="period-note">
+                  O período {period} inclui a fila de baixo: os {period === 6 ? 'lantanídeos' : 'actinídeos'}.
+                </p>
+              ) : null}
             </section>
           ) : null}
           {view === 'quiz' ? (
